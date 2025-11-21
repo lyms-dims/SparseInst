@@ -1,0 +1,25 @@
+_BASE_: "sparse_inst_r50_base.yaml"
+MODEL:
+  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
+  RESNETS:
+    DEPTH: 50
+  ROI_HEADS:
+    NUM_CLASSES: 1
+  SPARSE_INST:
+    DECODER:
+      NUM_CLASSES: 1
+DATASETS:
+  TRAIN: ("deepcrack_train",)
+  TEST: ("deepcrack_test",)
+SOLVER:
+  IMS_PER_BATCH: 2
+  BASE_LR: 0.00025
+  MAX_ITER: 5000
+  STEPS: (3000, 4000)
+  CHECKPOINT_PERIOD: 1000
+INPUT:
+  MIN_SIZE_TRAIN: (480, 512, 544, 576, 608, 640)
+  MAX_SIZE_TRAIN: 800
+  MIN_SIZE_TEST: 640
+  MAX_SIZE_TEST: 800
+OUTPUT_DIR: "output/deepcrack_gabor_r50"

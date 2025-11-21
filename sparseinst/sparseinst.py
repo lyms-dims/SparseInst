@@ -16,6 +16,8 @@ from .utils import nested_tensor_from_tensor_list
 __all__ = ["SparseInst"]
 
 
+from .gabor_layer import GaborConv2d
+
 @torch.jit.script
 def rescoring_mask(scores, mask_pred, masks):
     mask_pred_ = mask_pred.float()
@@ -51,6 +53,10 @@ class SparseInst(nn.Module):
         self.pixel_std = torch.Tensor(
             cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
         # self.normalizer = lambda x: (x - pixel_mean) / pixel_std
+
+        # Gabor Filter
+        # Apply to 3 channels, output 3 channels (groups=3 for depthwise)
+        self.gabor = GaborConv2d(3, 3, kernel_size=7, padding=3, groups=3).to(self.device)
 
         # inference
         self.cls_threshold = cfg.MODEL.SPARSE_INST.CLS_THRESHOLD
@@ -96,7 +102,9 @@ class SparseInst(nn.Module):
             images = nested_tensor_from_tensor_list(images)
         max_shape = images.tensor.shape[2:]
         # forward
-        features = self.backbone(images.tensor)
+        # Apply Gabor Filter
+        x = self.gabor(images.tensor)
+        features = self.backbone(x)
         features = self.encoder(features)
         output = self.decoder(features)
 
