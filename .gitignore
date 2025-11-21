@@ -51,3 +51,4 @@ _darcs
 .DS_Store
 
 dataset/
+detectron2/
