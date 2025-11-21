@@ -1,0 +1,44 @@
+# Configuration for SparseInst with ResNet-50 backbone for crack detection
+# Based on sparse_inst_r50_giam.yaml but adapted for single-class crack detection
+
+_BASE_: "Base-SparseInst.yaml"
+
+MODEL:
+  WEIGHTS: "pretrained_models/R-50.pkl"
+  SPARSE_INST:
+    DECODER:
+      NUM_CLASSES: 1  # Only one class: crack
+      NUM_MASKS: 100  # Maximum number of instances to detect
+
+DATASETS:
+  # Update these names after registering your dataset
+  # Example: ("deepcracks_train",)
+  TRAIN: ("deepcracks_train",)
+  TEST: ("deepcracks_val",)
+
+SOLVER:
+  IMS_PER_BATCH: 16  # Reduced from 64 for smaller datasets, adjust based on GPU memory
+  BASE_LR: 0.0001  # Slightly higher learning rate for fine-tuning
+  STEPS: (10000, 15000)  # Adjust based on your dataset size
+  MAX_ITER: 20000  # Adjust based on your dataset size
+  WEIGHT_DECAY: 0.05
+  # For smaller datasets, you might want to reduce learning rate schedule
+  # STEPS: (5000, 10000)
+  # MAX_ITER: 15000
+
+INPUT:
+  MIN_SIZE_TRAIN: (416, 448, 480, 512, 544, 576, 608, 640)
+  MAX_SIZE_TRAIN: 853
+  MIN_SIZE_TEST: 640
+  MAX_SIZE_TEST: 853
+  FORMAT: "RGB"
+  MASK_FORMAT: "bitmask"
+
+TEST:
+  EVAL_PERIOD: 1000  # Evaluate every 1000 iterations
+
+DATALOADER:
+  NUM_WORKERS: 4  # Adjust based on your system
+
+OUTPUT_DIR: "output/sparse_inst_r50_giam_crack"
+
