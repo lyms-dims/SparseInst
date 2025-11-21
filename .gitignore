@@ -52,3 +52,4 @@ _darcs
 
 dataset/
 detectron2/
+venv/
