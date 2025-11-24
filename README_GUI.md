@@ -1,6 +1,6 @@
-# Crack Detection GUI
+# Crack Detection GUI - Model Comparison
 
-A user-friendly web interface for detecting cracks in images using trained deep learning models.
+A user-friendly web interface for detecting cracks in images using **both** trained deep learning models simultaneously. Compare Normal vs Gabor-enhanced models side-by-side!
 
 ## 🚀 Quick Start
 
@@ -35,35 +35,38 @@ The GUI will start and automatically open in your browser at `http://localhost:7
    - Or drag and drop an image directly
 
 3. **Configure Detection Settings**
-   - **Select Model**: Choose from available trained models in the `output/` directory
    - **Confidence Threshold**: Adjust from 0.0 to 1.0 (default: 0.4)
      - Lower values = more detections (may include false positives)
      - Higher values = fewer detections (only high-confidence cracks)
    - **Image Processing Size**: Resize shortest edge (default: 512)
      - Smaller = faster but less accurate
      - Larger = slower but more accurate
+   - **Force CPU Mode**: Check this if GPU hangs or isn't available
 
 4. **Run Detection**
-   - Click the "🔍 Detect Cracks" button
-   - Wait for processing (a few seconds)
-   - View the results with highlighted crack instances
+   - Click the "🔍 Detect Cracks (Both Models)" button
+   - Wait for processing (1-2 minutes first time, then faster)
+   - View the results from both models side-by-side
 
-5. **Review Results**
-   - The output image shows detected cracks with colored overlays
+5. **Compare Results**
+   - **Left panel**: Normal model predictions
+   - **Right panel**: Gabor model predictions
    - Check the info panel for:
-     - Number of cracks detected
-     - Model used
+     - Number of cracks detected by each model
      - Confidence threshold applied
      - Processing device (GPU/CPU)
+   - See which model performs better on your specific crack type!
 
 ## 🎯 Features
 
 - **Easy to Use**: Simple drag-and-drop interface
-- **Real-time Detection**: Get predictions in seconds
-- **Multiple Models**: Switch between different trained models
+- **Dual Model Comparison**: Automatically runs both Normal and Gabor models
+- **Side-by-Side Results**: Compare model outputs instantly
+- **Real-time Detection**: Get predictions in seconds (after initial load)
 - **Adjustable Settings**: Fine-tune confidence threshold and image size
-- **GPU Acceleration**: Automatically uses CUDA if available
+- **GPU Acceleration**: Automatically uses CUDA if available (with CPU fallback)
 - **Example Images**: Quick test with pre-loaded samples
+- **Model Caching**: Models stay loaded for fast subsequent predictions
 
 ## 🔧 Advanced Options
 
@@ -93,23 +96,27 @@ Access via `http://your-server-ip:7860`
 
 ## 📦 Model Requirements
 
-The GUI automatically detects trained models in the `output/` directory. Each model should have:
+The GUI automatically detects trained models in the `output/` directory and runs **both** models for comparison. You should have:
+- **Normal Model**: Standard crack detection model
+- **Gabor Model**: Gabor-enhanced crack detection model
+
+Each model should have:
 - `model_final.pth` - The trained weights
 - `config.yaml` - Model configuration (optional, will auto-detect)
 
-### Training a Model
+### Training Both Models
 
-If no models are available, train one first:
+For full comparison functionality, train both models:
 
 ```bash
-# Train standard model
+# Train standard model (required)
 python tools/train_net.py --config-file configs/sparse_inst_r50_giam_crack.yaml
 
-# Train with Gabor filters
+# Train Gabor model (required)
 python tools/train_net.py --config-file configs/sparse_inst_r50_giam_crack_gabor.yaml
 ```
 
-After training, the model will appear in the GUI's model dropdown.
+After training, both models will be detected automatically. If only one model is available, the GUI will show only that model's output.
 
 ## 🐛 Troubleshooting
 
@@ -150,10 +157,10 @@ example_images = [
 |---------|----------------|-------------------|
 | Ease of Use | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
 | Batch Processing | ❌ | ✅ |
-| Model Comparison | ❌ | ✅ |
+| Model Comparison | ✅ Side-by-side | ✅ Separate folders |
 | Visual Feedback | ✅ Real-time | ✅ Saved files |
-| Adjustable Settings | ✅ Interactive | ✅ CLI args |
-| Best For | Single images, demos | Batch processing, automation |
+| Adjustable Settings | ✅ Interactive sliders | ✅ CLI args |
+| Best For | Single images, demos, comparison | Batch processing, automation |
 
 ## 💡 Tips
 

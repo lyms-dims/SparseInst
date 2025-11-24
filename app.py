@@ -81,19 +81,87 @@ def get_available_models():
     
     return models
 
-def predict_crack(image, model_name, confidence_threshold, image_size, force_cpu):
-    """Predict cracks on an input image."""
+def predict_single_model(image, model_name, model_info, confidence_threshold, image_size, force_cpu):
+    """Run prediction with a single model."""
+    # Check if files exist
+    if not os.path.exists(model_info['weights']):
+        raise FileNotFoundError(f"Model weights file not found: {model_info['weights']}")
+    if not os.path.exists(model_info['config']):
+        raise FileNotFoundError(f"Config file not found: {model_info['config']}")
+    
+    # Check model file size
+    model_size_mb = os.path.getsize(model_info['weights']) / (1024 * 1024)
+    print(f"  Model file size: {model_size_mb:.1f} MB")
+    
+    # Use cache key with device info
+    device_suffix = "_cpu" if force_cpu else "_gpu"
+    cache_key = model_name + device_suffix
+    
+    # Load or get cached predictor
+    if cache_key not in predictors_cache:
+        print(f"  Loading model for the first time...")
+        print(f"  This may take 30-60 seconds...")
+        cfg = setup_cfg(
+            model_info["config"],
+            model_info["weights"],
+            confidence_threshold,
+            image_size,
+            force_cpu=force_cpu
+        )
+        print(f"  Config created, device: {cfg.MODEL.DEVICE}")
+        print(f"  Creating predictor...")
+        sys.stdout.flush()
+        
+        predictors_cache[cache_key] = DefaultPredictor(cfg)
+        
+        print(f"  ✓ Predictor loaded on {cfg.MODEL.DEVICE}!")
+    else:
+        print(f"  Using cached predictor")
+    
+    predictor = predictors_cache[cache_key]
+    
+    # Update confidence threshold if needed
+    predictor.cfg.defrost()
+    predictor.cfg.MODEL.SPARSE_INST.CLS_THRESHOLD = confidence_threshold
+    predictor.cfg.INPUT.MIN_SIZE_TEST = image_size
+    predictor.cfg.freeze()
+    
+    # Convert image to BGR for OpenCV
+    if len(image.shape) == 2:
+        im = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    else:
+        im = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    
+    print(f"  Running detection...")
+    outputs = predictor(im)
+    
+    # Get predictions
+    instances = outputs["instances"].to("cpu")
+    num_instances = len(instances)
+    print(f"  ✓ Found {num_instances} crack instances")
+    
+    # Visualize
+    metadata = MetadataCatalog.get("deepcracks_val")
+    v = Visualizer(im[:, :, ::-1], metadata=metadata, scale=1.0, instance_mode=ColorMode.SEGMENTATION)
+    out = v.draw_instance_predictions(instances)
+    
+    # Convert back to RGB
+    result_image = cv2.cvtColor(out.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB)
+    
+    return result_image, num_instances
+
+def predict_crack_comparison(image, confidence_threshold, image_size, force_cpu):
+    """Predict cracks using both models for comparison."""
     try:
-        print(f"\n{'='*50}")
-        print(f"Starting prediction...")
-        print(f"Model: {model_name}")
+        print(f"\n{'='*60}")
+        print(f"Starting DUAL MODEL comparison...")
         print(f"Confidence: {confidence_threshold}")
         print(f"Image size: {image_size}")
         print(f"Force CPU: {force_cpu}")
         
         if image is None:
             print("Error: No image provided")
-            return None, "Please upload an image first."
+            return None, None, "Please upload an image first."
         
         print(f"Image shape: {image.shape}")
         
@@ -102,103 +170,76 @@ def predict_crack(image, model_name, confidence_threshold, image_size, force_cpu
         
         if not available_models:
             print("Error: No models found")
-            return None, "❌ No trained models found in 'output/' directory. Please train a model first."
+            return None, None, "❌ No trained models found in 'output/' directory. Please train models first."
         
-        if model_name not in available_models:
-            print(f"Error: Model {model_name} not in available models")
-            return None, f"❌ Model '{model_name}' not found."
+        # Find normal and gabor models
+        normal_model = None
+        gabor_model = None
         
-        # Get model info
-        model_info = available_models[model_name]
-        print(f"Model weights: {model_info['weights']}")
-        print(f"Model config: {model_info['config']}")
+        for model_name, model_info in available_models.items():
+            if "gabor" in model_name.lower():
+                gabor_model = (model_name, model_info)
+            else:
+                normal_model = (model_name, model_info)
         
-        # Check if files exist
-        if not os.path.exists(model_info['weights']):
-            return None, f"❌ Model weights file not found: {model_info['weights']}"
-        if not os.path.exists(model_info['config']):
-            return None, f"❌ Config file not found: {model_info['config']}"
+        if not normal_model and not gabor_model:
+            return None, None, "❌ No models found. Please ensure you have trained models."
         
-        # Check model file size
-        model_size_mb = os.path.getsize(model_info['weights']) / (1024 * 1024)
-        print(f"Model file size: {model_size_mb:.1f} MB")
+        device = "GPU (CUDA)" if torch.cuda.is_available() and not force_cpu else "CPU"
+        results = []
         
-        # Use cache key with device info
-        device_suffix = "_cpu" if force_cpu else "_gpu"
-        cache_key = model_name + device_suffix
-        
-        # Load or get cached predictor
-        if cache_key not in predictors_cache:
-            print(f"Loading model for the first time...")
-            print(f"This may take 30-60 seconds on first run...")
-            cfg = setup_cfg(
-                model_info["config"],
-                model_info["weights"],
-                confidence_threshold,
-                image_size,
-                force_cpu=force_cpu
+        # Process normal model
+        if normal_model:
+            model_name, model_info = normal_model
+            print(f"\n[1/2] Processing with NORMAL model: {model_name}")
+            print(f"  Weights: {model_info['weights']}")
+            print(f"  Config: {model_info['config']}")
+            
+            result_img, num_cracks = predict_single_model(
+                image, model_name, model_info, 
+                confidence_threshold, image_size, force_cpu
             )
-            print(f"Config created, device: {cfg.MODEL.DEVICE}")
-            print(f"Loading model weights from: {model_info['weights']}")
-            print(f"Creating predictor (this is the slow part)...")
-            sys.stdout.flush()  # Force output to show immediately
+            results.append(("Normal Model", model_name, num_cracks, result_img))
+        
+        # Process gabor model
+        if gabor_model:
+            model_name, model_info = gabor_model
+            print(f"\n[2/2] Processing with GABOR model: {model_name}")
+            print(f"  Weights: {model_info['weights']}")
+            print(f"  Config: {model_info['config']}")
             
-            predictors_cache[cache_key] = DefaultPredictor(cfg)
-            
-            print("✓ Predictor created and cached!")
-            print(f"✓ Model loaded successfully on {cfg.MODEL.DEVICE}!")
-        else:
-            print("Using cached predictor")
+            result_img, num_cracks = predict_single_model(
+                image, model_name, model_info,
+                confidence_threshold, image_size, force_cpu
+            )
+            results.append(("Gabor Model", model_name, num_cracks, result_img))
         
-        predictor = predictors_cache[cache_key]
+        # Prepare outputs
+        normal_output = None
+        gabor_output = None
         
-        # Update confidence threshold if needed
-        predictor.cfg.defrost()
-        predictor.cfg.MODEL.SPARSE_INST.CLS_THRESHOLD = confidence_threshold
-        predictor.cfg.INPUT.MIN_SIZE_TEST = image_size
-        predictor.cfg.freeze()
-        
-        # Convert image to BGR for OpenCV
-        print("Converting image format...")
-        if len(image.shape) == 2:
-            # Grayscale
-            im = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        else:
-            # RGB to BGR
-            im = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        
-        print(f"Running detection on image of shape {im.shape}...")
-        # Run detection
-        outputs = predictor(im)
-        print("Detection complete!")
-        
-        # Get predictions
-        instances = outputs["instances"].to("cpu")
-        num_instances = len(instances)
-        print(f"Found {num_instances} crack instances")
-        
-        # Visualize
-        print("Creating visualization...")
-        metadata = MetadataCatalog.get("deepcracks_val")
-        v = Visualizer(im[:, :, ::-1], metadata=metadata, scale=1.0, instance_mode=ColorMode.SEGMENTATION)
-        out = v.draw_instance_predictions(instances)
-        
-        # Convert back to RGB
-        result_image = cv2.cvtColor(out.get_image()[:, :, ::-1], cv2.COLOR_BGR2RGB)
-        print("Visualization complete!")
+        for label, model_name, num_cracks, img in results:
+            if "Normal" in label:
+                normal_output = img
+            else:
+                gabor_output = img
         
         # Create info message
-        device = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
-        info = f"""
-✅ **Detection Complete!**
-- **Cracks Detected:** {num_instances}
-- **Model:** {model_name}
-- **Confidence Threshold:** {confidence_threshold}
-- **Device:** {device}
-        """
+        info_parts = ["✅ **Comparison Complete!**\n"]
+        info_parts.append(f"**Confidence Threshold:** {confidence_threshold}")
+        info_parts.append(f"**Device:** {device}\n")
         
-        print(f"{'='*50}\n")
-        return result_image, info
+        for label, model_name, num_cracks, _ in results:
+            info_parts.append(f"**{label}** (`{model_name}`):")
+            info_parts.append(f"  - Cracks Detected: **{num_cracks}**")
+        
+        info = "\n".join(info_parts)
+        
+        print(f"\n{'='*60}")
+        print("✓ Comparison complete!")
+        print(f"{'='*60}\n")
+        
+        return normal_output, gabor_output, info
         
     except Exception as e:
         import traceback
@@ -206,7 +247,7 @@ def predict_crack(image, model_name, confidence_threshold, image_size, force_cpu
         print(f"ERROR occurred:")
         print(error_trace)
         error_msg = f"❌ **Error during prediction:**\n```\n{str(e)}\n```\n\nCheck terminal for full traceback."
-        return None, error_msg
+        return None, None, error_msg
 
 def get_model_choices():
     """Get list of available model names."""
@@ -219,33 +260,27 @@ def get_model_choices():
 with gr.Blocks(title="Crack Detection System") as demo:
     gr.Markdown(
         """
-        # 🔍 Crack Detection System
+        # 🔍 Crack Detection System - Model Comparison
         
-        Upload an image to detect cracks using trained deep learning models.
-        The system will highlight detected cracks and provide instance segmentation.
+        Upload an image to detect cracks using **both** trained models simultaneously.
+        The system will show results from the Normal model and Gabor-enhanced model side-by-side for comparison.
         
-        ⚠️ **Note:** First prediction may take 30-60 seconds while the model loads into memory. Subsequent predictions will be much faster!
+        ⚠️ **Note:** First prediction may take 1-2 minutes while both models load into memory. Subsequent predictions will be much faster!
         """
     )
     
     with gr.Row():
         with gr.Column(scale=1):
-            gr.Markdown("### 📤 Input")
+            gr.Markdown("### 📤 Input Image")
             
             # Input image
             input_image = gr.Image(
-                label="Upload Image",
+                label="Upload Crack Image",
                 type="numpy",
-                height=400
+                height=500
             )
             
-            # Model selection
-            model_dropdown = gr.Dropdown(
-                choices=get_model_choices(),
-                label="Select Model",
-                value=get_model_choices()[0] if get_model_choices()[0] != "No models found" else None,
-                info="Choose a trained model from the output directory"
-            )
+            gr.Markdown("### ⚙️ Detection Settings")
             
             # Confidence threshold
             confidence_slider = gr.Slider(
@@ -275,23 +310,28 @@ with gr.Blocks(title="Crack Detection System") as demo:
             )
             
             # Predict button
-            predict_btn = gr.Button("🔍 Detect Cracks", variant="primary", size="lg")
-            
-            # Refresh models button
-            refresh_btn = gr.Button("🔄 Refresh Model List", size="sm")
-        
-        with gr.Column(scale=1):
-            gr.Markdown("### 📥 Output")
-            
-            # Output image
-            output_image = gr.Image(
-                label="Detected Cracks",
-                type="numpy",
-                height=400
-            )
+            predict_btn = gr.Button("🔍 Detect Cracks (Both Models)", variant="primary", size="lg")
             
             # Info text
             info_text = gr.Markdown("")
+        
+        with gr.Column(scale=2):
+            gr.Markdown("### 📥 Model Outputs - Side by Side Comparison")
+            
+            with gr.Row():
+                # Normal model output
+                normal_output = gr.Image(
+                    label="🔹 Normal Model",
+                    type="numpy",
+                    height=500
+                )
+                
+                # Gabor model output
+                gabor_output = gr.Image(
+                    label="🔸 Gabor Model",
+                    type="numpy",
+                    height=500
+                )
     
     # Example images section
     gr.Markdown("### 📋 Examples")
@@ -318,18 +358,9 @@ with gr.Blocks(title="Crack Detection System") as demo:
     
     # Event handlers
     predict_btn.click(
-        fn=predict_crack,
-        inputs=[input_image, model_dropdown, confidence_slider, size_slider, force_cpu_checkbox],
-        outputs=[output_image, info_text]
-    )
-    
-    def refresh_models():
-        choices = get_model_choices()
-        return gr.Dropdown(choices=choices, value=choices[0] if choices[0] != "No models found" else None)
-    
-    refresh_btn.click(
-        fn=refresh_models,
-        outputs=[model_dropdown]
+        fn=predict_crack_comparison,
+        inputs=[input_image, confidence_slider, size_slider, force_cpu_checkbox],
+        outputs=[normal_output, gabor_output, info_text]
     )
     
     gr.Markdown(
@@ -337,15 +368,23 @@ with gr.Blocks(title="Crack Detection System") as demo:
         ---
         ### 📝 Instructions
         1. **Upload an image** containing cracks (concrete, pavement, etc.)
-        2. **Select a trained model** from the dropdown menu
-        3. **Adjust confidence threshold** if needed (lower = more detections, higher = fewer but more confident)
-        4. **Click "Detect Cracks"** to run the prediction
-        5. View the results with highlighted crack instances
+        2. **Adjust confidence threshold** if needed (lower = more detections, higher = fewer but more confident)
+        3. **Click "Detect Cracks (Both Models)"** to run predictions with both models
+        4. **Compare results** - Normal model vs Gabor-enhanced model side-by-side
+        5. View which model detects more cracks and handles different crack types better
+        
+        ### 🔬 Model Comparison
+        - **Normal Model**: Standard crack detection
+        - **Gabor Model**: Uses Gabor filters for enhanced edge detection
         
         ### ⚙️ Model Training
-        If no models are available, train a model first using:
+        If no models are available, train both models using:
         ```bash
+        # Normal model
         python tools/train_net.py --config-file configs/sparse_inst_r50_giam_crack.yaml
+        
+        # Gabor model
+        python tools/train_net.py --config-file configs/sparse_inst_r50_giam_crack_gabor.yaml
         ```
         """
     )
