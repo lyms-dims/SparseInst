@@ -13,6 +13,22 @@ from detectron2.utils.logger import setup_logger
 
 from sparseinst import VisualizationDemo, add_sparse_inst_config
 
+# === ADD THIS SECTION ===
+import sys
+sys.path.append(".") # Ensure we can find the tools folder
+from tools.register_deepcracks_dataset import register_deepcracks_dataset
+
+# Register the dataset so the demo knows class names (e.g., "crack")
+try:
+    register_deepcracks_dataset(
+        dataset_name="deepcracks_val",
+        json_file="datasets/DeepCrack/annotations/val.json",
+        image_root="datasets/DeepCrack/val_img"
+    )
+except AssertionError:
+    # If it's already registered, just ignore
+    pass
+# ========================
 
 # constants
 WINDOW_NAME = "COCO detections"

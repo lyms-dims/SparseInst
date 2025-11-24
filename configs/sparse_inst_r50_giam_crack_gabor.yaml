@@ -1,5 +1,5 @@
-# Configuration for SparseInst with ResNet-50 backbone for crack detection
-# Based on sparse_inst_r50_giam.yaml but adapted for single-class crack detection
+# Configuration for SparseInst with ResNet-50 backbone for crack detection with Gabor Filtering
+# Based on sparse_inst_r50_giam_crack.yaml
 
 _BASE_: "Base-SparseInst.yaml"
 
@@ -9,6 +9,7 @@ MODEL:
     DECODER:
       NUM_CLASSES: 1  # Only one class: crack
       NUM_MASKS: 100  # Maximum number of instances to detect
+    DATASET_MAPPER: "GaborDatasetMapper" # Use the Gabor Filter Mapper
 
 DATASETS:
   # Update these names after registering your dataset
@@ -40,5 +41,6 @@ TEST:
 DATALOADER:
   NUM_WORKERS: 4  # Adjust based on your system
 
-OUTPUT_DIR: "output/sparse_inst_r50_giam_crack"
+OUTPUT_DIR: "output/sparse_inst_r50_giam_crack_gabor"
+
 

@@ -1,4 +1,6 @@
 import os
+import warnings 
+warnings.filterwarnings("ignore", category=FutureWarning)
 import sys
 import itertools
 from typing import Any, Dict, List, Set
@@ -24,8 +26,41 @@ from detectron2.evaluation import (
     verify_results,
 )
 
+# Add root to path
 sys.path.append(".")
 from sparseinst import add_sparse_inst_config, COCOMaskEvaluator
+
+# ============================================================================
+# [FIXED] Register Datasets
+# ============================================================================
+# We use a try-except block to ensure we can import the sibling file
+# regardless of whether we are running from root or inside tools/
+try:
+    from tools.register_deepcracks_dataset import register_deepcracks_dataset
+except ImportError:
+    # Fallback: Add current directory to path and import directly
+    sys.path.append(os.path.dirname(__file__))
+    from register_deepcracks_dataset import register_deepcracks_dataset
+
+try:
+    from tools.gabor_utils import GaborDatasetMapper
+except ImportError:
+    from gabor_utils import GaborDatasetMapper
+
+# 1. Register Training Set
+register_deepcracks_dataset(
+    dataset_name="deepcracks_train",
+    json_file="datasets/DeepCrack/annotations/train.json",
+    image_root="datasets/DeepCrack/train_img"
+)
+
+# 2. Register Validation Set
+register_deepcracks_dataset(
+    dataset_name="deepcracks_val",
+    json_file="datasets/DeepCrack/annotations/val.json",
+    image_root="datasets/DeepCrack/val_img"
+)
+# ============================================================================
 
 
 class Trainer(DefaultTrainer):
@@ -139,6 +174,8 @@ class Trainer(DefaultTrainer):
         if cfg.MODEL.SPARSE_INST.DATASET_MAPPER == "SparseInstDatasetMapper":
             from sparseinst import SparseInstDatasetMapper
             mapper = SparseInstDatasetMapper(cfg, is_train=True)
+        elif cfg.MODEL.SPARSE_INST.DATASET_MAPPER == "GaborDatasetMapper":
+            mapper = GaborDatasetMapper(cfg, is_train=True)
         else:
             mapper = None
         return build_detection_train_loader(cfg, mapper=mapper)
